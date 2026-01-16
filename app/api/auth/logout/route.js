@@ -11,7 +11,7 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Invalid provider' }, { status: 400 });
         }
 
-        const cookieStore = cookies();
+        const cookieStore = await cookies();
 
         // Delete all auth-related cookies for the provider
         cookieStore.delete(`${provider}_access_token`);
