@@ -84,11 +84,16 @@ export default function TransferFlow() {
         }
     };
 
+    const abortControllerRef = useRef(null);
+
     const startTransfer = async () => {
         setStep(4);
         setTransferActive(true);
         setProgressLog([]);
         setTransferStats({ total: 0, successful: 0, failed: 0 });
+
+        // Create new AbortController
+        abortControllerRef.current = new AbortController();
 
         const playlistIds = selectedPlaylists.map(p => p.id);
 
@@ -96,7 +101,8 @@ export default function TransferFlow() {
             const response = await fetch('/api/transfer/execute', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source, playlistIds })
+                body: JSON.stringify({ source, playlistIds }),
+                signal: abortControllerRef.current.signal
             });
 
             if (!response.ok) throw new Error("Transfer request failed");
@@ -118,17 +124,27 @@ export default function TransferFlow() {
                         const dataLine = line.split('\n')[1];
                         if (dataLine && dataLine.startsWith('data: ')) {
                             const data = JSON.parse(dataLine.replace('data: ', ''));
-
                             handleStreamEvent(eventType, data);
                         }
                     }
                 }
             }
         } catch (e) {
-            console.error(e);
-            addLog(`Error: ${e.message}`, 'error');
+            if (e.name === 'AbortError') {
+                addLog('Transfer Cancelled by User', 'error');
+            } else {
+                console.error(e);
+                addLog(`Error: ${e.message}`, 'error');
+            }
         } finally {
             setTransferActive(false);
+            abortControllerRef.current = null;
+        }
+    };
+
+    const handleCancel = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
         }
     };
 
@@ -273,6 +289,14 @@ export default function TransferFlow() {
         return (
             <div className="w-full max-w-3xl mx-auto p-6">
                 <h2 className="text-3xl font-bold text-center mb-2">{transferActive ? 'Transferring Logic...' : 'Transfer Complete'}</h2>
+
+                {transferActive && (
+                    <div className="text-center mb-6">
+                        <button onClick={handleCancel} className="px-6 py-2 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition font-bold text-sm">
+                            Stop Transfer
+                        </button>
+                    </div>
+                )}
 
                 {/* Stats Bar */}
                 <div className="grid grid-cols-3 gap-4 mb-6 text-center">
