@@ -153,7 +153,8 @@ export async function POST(request) {
                 sendEvent(controller, 'complete', { summary });
             } catch (error) {
                 console.error("Stream Error", error);
-                sendEvent(controller, 'error', { message: error.message || "Transfer failed" });
+                const errorMsg = error.details ? `${error.message} (- ${JSON.stringify(error.details?.error?.message || 'Check logs')})` : error.message;
+                sendEvent(controller, 'error', { message: errorMsg || "Transfer failed" });
             } finally {
                 controller.close();
             }
