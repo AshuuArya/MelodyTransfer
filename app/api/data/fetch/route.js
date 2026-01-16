@@ -27,7 +27,7 @@ export async function GET(request) {
             // Parallel fetch for speed
             const [playlistsData, likedData] = await Promise.all([
                 getUserPlaylists(token),
-                getLikedTracks(token) // Fetch simple info to get count
+                getLikedTracks(token, false) // Optimized: Only get count, don't fetch all tracks yet
             ]);
 
             data = playlistsData.items ? playlistsData.items.map(p => ({
