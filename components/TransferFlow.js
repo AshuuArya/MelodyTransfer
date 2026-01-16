@@ -40,6 +40,21 @@ export default function TransferFlow() {
         setStep(2);
     };
 
+    const handleDisconnect = async (provider) => {
+        try {
+            const res = await fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider })
+            });
+            if (res.ok) {
+                setAuthStatus(prev => ({ ...prev, [provider]: false }));
+            }
+        } catch (e) {
+            console.error("Disconnect failed", e);
+        }
+    };
+
     const login = (provider) => {
         // Redirect to auth endpoint
         window.location.href = `/api/auth/${provider}`;
@@ -188,18 +203,32 @@ export default function TransferFlow() {
                             <h3 className="text-xl font-bold">{source === 'spotify' ? 'Spotify' : 'YouTube'} (Source)</h3>
                             <p className="text-sm text-zinc-400">{authStatus[source] ? 'Connected' : 'Not Connected'}</p>
                         </div>
-                        <button onClick={() => login(source)} disabled={authStatus[source]} className={`px-6 py-2 rounded-full font-bold transition ${authStatus[source] ? 'bg-green-500/20 text-green-500 cursor-default' : 'bg-white text-black hover:bg-zinc-200'}`}>
-                            {authStatus[source] ? '✓ Connected' : 'Connect'}
-                        </button>
+                        <div className="flex gap-2">
+                            {authStatus[source] && (
+                                <button onClick={() => handleDisconnect(source)} className="p-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition" title="Disconnect">
+                                    ✕
+                                </button>
+                            )}
+                            <button onClick={() => login(source)} disabled={authStatus[source]} className={`px-6 py-2 rounded-full font-bold transition ${authStatus[source] ? 'bg-green-500/20 text-green-500 cursor-default' : 'bg-white text-black hover:bg-zinc-200'}`}>
+                                {authStatus[source] ? '✓ Connected' : 'Connect'}
+                            </button>
+                        </div>
                     </div>
                     <div className="p-6 rounded-xl bg-zinc-900 border border-zinc-700 flex justify-between items-center">
                         <div>
                             <h3 className="text-xl font-bold">{dest === 'spotify' ? 'Spotify' : 'YouTube'} (Destination)</h3>
                             <p className="text-sm text-zinc-400">{authStatus[dest] ? 'Connected' : 'Not Connected'}</p>
                         </div>
-                        <button onClick={() => login(dest)} disabled={authStatus[dest]} className={`px-6 py-2 rounded-full font-bold transition ${authStatus[dest] ? 'bg-green-500/20 text-green-500 cursor-default' : 'bg-white text-black hover:bg-zinc-200'}`}>
-                            {authStatus[dest] ? '✓ Connected' : 'Connect'}
-                        </button>
+                        <div className="flex gap-2">
+                            {authStatus[dest] && (
+                                <button onClick={() => handleDisconnect(dest)} className="p-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition" title="Disconnect">
+                                    ✕
+                                </button>
+                            )}
+                            <button onClick={() => login(dest)} disabled={authStatus[dest]} className={`px-6 py-2 rounded-full font-bold transition ${authStatus[dest] ? 'bg-green-500/20 text-green-500 cursor-default' : 'bg-white text-black hover:bg-zinc-200'}`}>
+                                {authStatus[dest] ? '✓ Connected' : 'Connect'}
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div className="text-center mt-10">

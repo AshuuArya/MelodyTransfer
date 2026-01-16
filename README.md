@@ -61,6 +61,14 @@
 - **Input Validation**: All API routes validate input to prevent injection attacks.
 - **No Secrets in Client**: Client-side code only uses public keys or proxies requests through API routes.
 
+## ❓ Troubleshooting
+
+### Spotify "INVALID_CLIENT: Invalid redirect URI"
+If you see this error, it means the Redirect URI in your Spotify Dashboard does not **exactly** match the one the app is using.
+-   **Solution**: Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/) -> Settings -> Edit.
+-   Add `http://localhost:3000/api/auth/spotify` to the Redirect URIs list.
+-   Save and try again.
+
 ## 📂 Project Structure
 
 ```
