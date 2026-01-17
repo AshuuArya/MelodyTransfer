@@ -19,9 +19,13 @@ export default function TransferFlow() {
     const [transferActive, setTransferActive] = useState(false);
     const logContainerRef = useRef(null);
 
-    // Initial Auth Check
+    // Initial Auth Check with Polling
     useEffect(() => {
         checkAuthStatus();
+        // Poll a few times to catch redirect updates
+        const interval = setInterval(checkAuthStatus, 2000);
+        setTimeout(() => clearInterval(interval), 10000); // Stop after 10s
+        return () => clearInterval(interval);
     }, [searchParams]);
 
     const checkAuthStatus = async () => {
@@ -225,9 +229,10 @@ export default function TransferFlow() {
                         <div className="flex items-center gap-4">
                             {authStatus[source] && authStatus[`${source}User`] ? (
                                 <img
-                                    src={source === 'spotify' ? authStatus.spotifyUser.images?.[0]?.url : authStatus.youtubeUser.thumbnails?.default?.url}
-                                    className="w-12 h-12 rounded-full border-2 border-green-500"
+                                    src={(source === 'spotify' ? authStatus.spotifyUser.images?.[0]?.url : authStatus.youtubeUser.thumbnails?.default?.url) || 'https://www.gravatar.com/avatar?d=mp'}
+                                    className="w-12 h-12 rounded-full border-2 border-green-500 object-cover"
                                     alt="Profile"
+                                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://www.gravatar.com/avatar?d=mp'; }}
                                 />
                             ) : (
                                 <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">
@@ -274,9 +279,10 @@ export default function TransferFlow() {
                         <div className="flex items-center gap-4">
                             {authStatus[dest] && authStatus[`${dest}User`] ? (
                                 <img
-                                    src={dest === 'spotify' ? authStatus.spotifyUser.images?.[0]?.url : authStatus.youtubeUser.thumbnails?.default?.url}
-                                    className="w-12 h-12 rounded-full border-2 border-blue-500"
+                                    src={(dest === 'spotify' ? authStatus.spotifyUser.images?.[0]?.url : authStatus.youtubeUser.thumbnails?.default?.url) || 'https://www.gravatar.com/avatar?d=mp'}
+                                    className="w-12 h-12 rounded-full border-2 border-blue-500 object-cover"
                                     alt="Profile"
+                                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://www.gravatar.com/avatar?d=mp'; }}
                                 />
                             ) : (
                                 <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">

@@ -135,9 +135,17 @@ export async function POST(request) {
 
                         // 4. Add Videos
                         for (const m of matches) {
-                            const videoId = m.match.id.videoId;
-                            await addVideoToPlaylist(destToken, newPlaylistId, videoId);
-                            // YT is slow, maybe update progress?
+                            try {
+                                const videoId = m.match.id.videoId;
+                                await addVideoToPlaylist(destToken, newPlaylistId, videoId);
+                            } catch (e) {
+                                if (e.code === 403 || e.message?.includes('quota')) {
+                                    sendEvent(controller, 'error', { message: 'YouTube Quota Exceeded. Transfer paused. Please try again tomorrow.' });
+                                    throw new Error("Quota Exceeded"); // Break the main loop
+                                }
+                                // Log other individual track failures but continue
+                                logError(e, "Failed to add video to playlist");
+                            }
                         }
                     }
 
