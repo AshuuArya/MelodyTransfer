@@ -31,6 +31,18 @@ export default function TransferFlow() {
         return () => clearInterval(interval);
     }, [searchParams]);
 
+    // Listen for Popup Auth Success
+    useEffect(() => {
+        const handleMessage = (event) => {
+            if (event.origin !== window.location.origin) return;
+            if (event.data?.type === 'AUTH_COMPLETE') {
+                checkAuthStatus();
+            }
+        };
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, []);
+
     const checkAuthStatus = async () => {
         try {
             const res = await fetch('/api/auth/status');
@@ -61,7 +73,23 @@ export default function TransferFlow() {
     };
 
     const login = (provider, role) => {
-        window.location.href = `/api/auth/${provider}?role=${role}`;
+        const width = 500;
+        const height = 600;
+        const left = (window.innerWidth - width) / 2;
+        const top = (window.innerHeight - height) / 2;
+
+        window.open(
+            `/api/auth/${provider}?role=${role}`,
+            'MelodyTransferAuth',
+            `width=${width},height=${height},top=${top},left=${left},status=0,menubar=0`
+        );
+    };
+
+    const handleSwap = () => {
+        const tempSource = source;
+        const tempDest = dest;
+        setSource(tempDest);
+        setDest(tempSource);
     };
 
     const fetchPlaylists = async () => {
@@ -298,9 +326,19 @@ export default function TransferFlow() {
 
                 <div className="space-y-6">
                     {renderAuthCard('source', source)}
-                    <div className="flex justify-center">
-                        <div className="text-2xl animate-pulse text-zinc-600">↓</div>
+
+                    <div className="flex justify-center relative">
+                        <div className="absolute inset-x-0 top-1/2 border-t border-zinc-800 -z-10"></div>
+                        <button
+                            onClick={handleSwap}
+                            className="p-3 rounded-full bg-zinc-900 border border-zinc-700 hover:border-blue-500 hover:text-blue-500 transition-all shadow-xl group"
+                            title="Swap Source and Destination"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-180 transition-transform duration-500"><path d="M7 10v12" /><path d="M15 10.5 7 3 3 8" /><path d="M21 3v12" /><path d="M9 11l-4 9-4-5" /></svg>
+                            <span className="sr-only">Swap</span>
+                        </button>
                     </div>
+
                     {renderAuthCard('dest', dest)}
                 </div>
 

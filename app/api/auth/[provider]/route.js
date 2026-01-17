@@ -103,11 +103,13 @@ export async function GET(request, props) {
                 });
             }
 
-            // Redirect to home/dashboard with success flag
-            return NextResponse.redirect(`${baseUrl}/?connected=${provider}`);
+            // Redirect to success page (for popup handling)
+            return NextResponse.redirect(`${baseUrl}/auth/success`);
         } else {
             console.error("Tokens missing access_token", tokens);
-            return NextResponse.redirect(`${baseUrl}/?error=auth_failed_no_token`);
+            const errorUrl = new URL(`${baseUrl}/auth/error`); // Optional: build error page too?
+            errorUrl.searchParams.set('error', 'auth_failed_no_token');
+            return NextResponse.redirect(`${baseUrl}/?error=auth_failed_no_token`); // Fallback to home for error
         }
 
     } catch (error) {
