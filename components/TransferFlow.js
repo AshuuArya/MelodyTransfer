@@ -212,43 +212,115 @@ export default function TransferFlow() {
     if (step === 2) {
         return (
             <div className="w-full max-w-2xl mx-auto p-6">
-                <h2 className="text-3xl font-bold text-center mb-8">Connect Accounts</h2>
+                <div className="flex items-center mb-8 relative">
+                    <button onClick={() => setStep(1)} className="absolute left-0 p-2 rounded-full hover:bg-zinc-800 transition text-zinc-400 hover:text-white" title="Back">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                    </button>
+                    <h2 className="text-3xl font-bold text-center w-full">Connect Accounts</h2>
+                </div>
+
                 <div className="space-y-6">
-                    <div className="p-6 rounded-xl bg-zinc-900 border border-zinc-700 flex justify-between items-center">
-                        <div>
-                            <h3 className="text-xl font-bold">{source === 'spotify' ? 'Spotify' : 'YouTube'} (Source)</h3>
-                            <p className="text-sm text-zinc-400">{authStatus[source] ? 'Connected' : 'Not Connected'}</p>
+                    {/* Source Account */}
+                    <div className="p-6 rounded-xl bg-zinc-900 border border-zinc-700 flex justify-between items-center group hover:border-zinc-600 transition-all">
+                        <div className="flex items-center gap-4">
+                            {authStatus[source] && authStatus[`${source}User`] ? (
+                                <img
+                                    src={source === 'spotify' ? authStatus.spotifyUser.images?.[0]?.url : authStatus.youtubeUser.thumbnails?.default?.url}
+                                    className="w-12 h-12 rounded-full border-2 border-green-500"
+                                    alt="Profile"
+                                />
+                            ) : (
+                                <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">
+                                    {source === 'spotify' ? '🟢' : '🔴'}
+                                </div>
+                            )}
+                            <div>
+                                <h3 className="text-xl font-bold">{source === 'spotify' ? 'Spotify' : 'YouTube Music'}</h3>
+                                {authStatus[source] && authStatus[`${source}User`] ? (
+                                    <p className="text-sm text-green-400 font-medium">
+                                        {source === 'spotify' ? authStatus.spotifyUser.display_name : authStatus.youtubeUser.title}
+                                    </p>
+                                ) : (
+                                    <p className="text-sm text-zinc-400">Not Connected</p>
+                                )}
+                            </div>
                         </div>
-                        <div className="flex gap-2">
-                            {authStatus[source] && (
-                                <button onClick={() => handleDisconnect(source)} className="p-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition" title="Disconnect">
-                                    ✕
+
+                        <div className="flex items-center gap-2">
+                            {authStatus[source] ? (
+                                <>
+                                    <a
+                                        href={source === 'spotify' ? 'https://open.spotify.com' : 'https://music.youtube.com'}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-4 py-2 rounded-full bg-zinc-800 text-xs font-bold hover:bg-zinc-700 transition"
+                                    >
+                                        Open App ↗
+                                    </a>
+                                    <button onClick={() => handleDisconnect(source)} className="p-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition" title="Disconnect">
+                                        ✕
+                                    </button>
+                                </>
+                            ) : (
+                                <button onClick={() => login(source)} className="px-6 py-2 rounded-full bg-white text-black font-bold hover:bg-zinc-200 transition">
+                                    Connect
                                 </button>
                             )}
-                            <button onClick={() => login(source)} disabled={authStatus[source]} className={`px-6 py-2 rounded-full font-bold transition ${authStatus[source] ? 'bg-green-500/20 text-green-500 cursor-default' : 'bg-white text-black hover:bg-zinc-200'}`}>
-                                {authStatus[source] ? '✓ Connected' : 'Connect'}
-                            </button>
                         </div>
                     </div>
-                    <div className="p-6 rounded-xl bg-zinc-900 border border-zinc-700 flex justify-between items-center">
-                        <div>
-                            <h3 className="text-xl font-bold">{dest === 'spotify' ? 'Spotify' : 'YouTube'} (Destination)</h3>
-                            <p className="text-sm text-zinc-400">{authStatus[dest] ? 'Connected' : 'Not Connected'}</p>
+
+                    {/* Destination Account */}
+                    <div className="p-6 rounded-xl bg-zinc-900 border border-zinc-700 flex justify-between items-center group hover:border-zinc-600 transition-all">
+                        <div className="flex items-center gap-4">
+                            {authStatus[dest] && authStatus[`${dest}User`] ? (
+                                <img
+                                    src={dest === 'spotify' ? authStatus.spotifyUser.images?.[0]?.url : authStatus.youtubeUser.thumbnails?.default?.url}
+                                    className="w-12 h-12 rounded-full border-2 border-blue-500"
+                                    alt="Profile"
+                                />
+                            ) : (
+                                <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">
+                                    {dest === 'spotify' ? '🟢' : '🔴'}
+                                </div>
+                            )}
+                            <div>
+                                <h3 className="text-xl font-bold">{dest === 'spotify' ? 'Spotify' : 'YouTube Music'}</h3>
+                                {authStatus[dest] && authStatus[`${dest}User`] ? (
+                                    <p className="text-sm text-green-400 font-medium">
+                                        {dest === 'spotify' ? authStatus.spotifyUser.display_name : authStatus.youtubeUser.title}
+                                    </p>
+                                ) : (
+                                    <p className="text-sm text-zinc-400">Not Connected</p>
+                                )}
+                            </div>
                         </div>
-                        <div className="flex gap-2">
-                            {authStatus[dest] && (
-                                <button onClick={() => handleDisconnect(dest)} className="p-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition" title="Disconnect">
-                                    ✕
+
+                        <div className="flex items-center gap-2">
+                            {authStatus[dest] ? (
+                                <>
+                                    <a
+                                        href={dest === 'spotify' ? 'https://open.spotify.com' : 'https://music.youtube.com'}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-4 py-2 rounded-full bg-zinc-800 text-xs font-bold hover:bg-zinc-700 transition"
+                                    >
+                                        Open App ↗
+                                    </a>
+                                    <button onClick={() => handleDisconnect(dest)} className="p-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition" title="Disconnect">
+                                        ✕
+                                    </button>
+                                </>
+                            ) : (
+                                <button onClick={() => login(dest)} className="px-6 py-2 rounded-full bg-white text-black font-bold hover:bg-zinc-200 transition">
+                                    Connect
                                 </button>
                             )}
-                            <button onClick={() => login(dest)} disabled={authStatus[dest]} className={`px-6 py-2 rounded-full font-bold transition ${authStatus[dest] ? 'bg-green-500/20 text-green-500 cursor-default' : 'bg-white text-black hover:bg-zinc-200'}`}>
-                                {authStatus[dest] ? '✓ Connected' : 'Connect'}
-                            </button>
                         </div>
                     </div>
                 </div>
+
                 <div className="text-center mt-10">
-                    <button onClick={fetchPlaylists} disabled={loading || !authStatus[source] || !authStatus[dest]} className="px-8 py-3 rounded-full bg-blue-600 text-white font-bold disabled:opacity-50 hover:bg-blue-500 transition">
+                    <button onClick={fetchPlaylists} disabled={loading || !authStatus[source] || !authStatus[dest]} className="px-8 py-3 rounded-full bg-blue-600 text-white font-bold disabled:opacity-50 hover:bg-blue-500 transition shadow-lg hover:shadow-blue-500/20">
                         {loading ? 'Loading...' : 'Next: Select Music'}
                     </button>
                 </div>
@@ -260,7 +332,12 @@ export default function TransferFlow() {
     if (step === 3) {
         return (
             <div className="w-full max-w-4xl mx-auto p-6">
-                <h2 className="text-3xl font-bold mb-6">Select Playlists</h2>
+                <div className="flex items-center mb-6 relative">
+                    <button onClick={() => setStep(2)} className="absolute left-0 p-2 rounded-full hover:bg-zinc-800 transition text-zinc-400 hover:text-white" title="Back">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                    </button>
+                    <h2 className="text-3xl font-bold w-full text-center">Select Playlists</h2>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-h-[500px] overflow-y-auto">
                     {playlists.map(p => (
                         <div key={p.id} onClick={() => {

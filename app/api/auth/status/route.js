@@ -57,15 +57,50 @@ export async function GET() {
     // Construct response to set cookies if refreshed
     const response = NextResponse.json(status);
 
+    // Fetch User Profiles if connected
+    try {
+        if (status.spotify) {
+            let token = spToken;
+            if (status.spotifyRefreshed) token = status.newSpotifyToken;
+
+            // We need to import getCurrentUser from lib/spotify
+            const spUser = await import('@/lib/spotify').then(m => m.getCurrentUser(token));
+            status.spotifyUser = spUser;
+        }
+    } catch (e) {
+        console.error("Failed to fetch Spotify user", e);
+    }
+
+    try {
+        if (status.youtube) {
+            let token = ytToken;
+            if (status.youtubeRefreshed) token = status.newYoutubeToken;
+
+            // We need to import getCurrentUser from lib/youtube
+            const ytUser = await import('@/lib/youtube').then(m => m.getCurrentUser(token));
+            status.youtubeUser = ytUser;
+        }
+    } catch (e) {
+        console.error("Failed to fetch YouTube user", e);
+    }
+
+    // Re-create JSON response with user data included
+    // Note: NextResponse.json() creates a new response, so we need to copy over cookies if we create a new one,
+    // or just return the data object if we assume the previous `response` object is mutable/extendable? 
+    // NextResponse.json returns a Response object. We can't modify the body easily.
+    // It's cleaner to create the response at the very end.
+
+    const finalResponse = NextResponse.json(status);
+
     if (status.spotifyRefreshed) {
-        response.cookies.set('spotify_access_token', status.newSpotifyToken, {
+        finalResponse.cookies.set('spotify_access_token', status.newSpotifyToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             path: '/',
             maxAge: status.expiresIn
         });
         // Update expires_at
-        response.cookies.set('spotify_expires_at', (Date.now() + status.expiresIn * 1000).toString(), {
+        finalResponse.cookies.set('spotify_expires_at', (Date.now() + status.expiresIn * 1000).toString(), {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             path: '/'
@@ -73,7 +108,7 @@ export async function GET() {
     }
 
     if (status.youtubeRefreshed) {
-        response.cookies.set('youtube_access_token', status.newYoutubeToken, {
+        finalResponse.cookies.set('youtube_access_token', status.newYoutubeToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             path: '/',
@@ -81,5 +116,5 @@ export async function GET() {
         });
     }
 
-    return response;
+    return finalResponse;
 }
