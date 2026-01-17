@@ -19,14 +19,21 @@ export async function GET(request, props) {
 
     const url = new URL(request.url);
     const code = url.searchParams.get('code');
-    const role = url.searchParams.get('role') || 'source'; // Default to source
-    const redirect_uri = `${baseUrl}/api/auth/${provider}?role=${role}`; // Persist role in callback URL
+    const roleParam = url.searchParams.get('role'); // Only present in init, not callback usually
+
+    // Base URL must match registered URI exactly
+    const redirect_uri = `${baseUrl}/api/auth/${provider}`;
 
     // 1. Redirect to Auth Provider
     if (!code) {
-        const state = Math.random().toString(36).substring(7); // In production use signed JWT or proper session
-        let authUrl = '';
+        // Encode role in state
+        const stateData = JSON.stringify({
+            role: roleParam || 'source',
+            nonce: Math.random().toString(36).substring(7)
+        });
+        const state = Buffer.from(stateData).toString('base64');
 
+        let authUrl = '';
         if (provider === 'spotify') {
             authUrl = getSpotifyAuthURL(redirect_uri, state);
         } else if (provider === 'youtube') {
@@ -40,6 +47,18 @@ export async function GET(request, props) {
 
     // 2. Handle Callback (Code Exchange)
     try {
+        // Recover role from state
+        const stateParam = url.searchParams.get('state');
+        let role = 'source';
+        if (stateParam) {
+            try {
+                const decoded = JSON.parse(Buffer.from(stateParam, 'base64').toString());
+                if (decoded.role) role = decoded.role;
+            } catch (e) {
+                console.warn("Failed to decode state, defaulting to source", e);
+            }
+        }
+
         let tokens = null;
         if (provider === 'spotify') {
             tokens = await getSpotifyTokens(code, redirect_uri);
