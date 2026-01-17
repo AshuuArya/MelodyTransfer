@@ -40,7 +40,11 @@ export default function TransferFlow() {
 
     const handleSourceSelect = (s) => {
         setSource(s);
-        setDest(s === 'spotify' ? 'youtube' : 'spotify');
+        setStep(1.5); // Intermediate step for Dest selection
+    };
+
+    const handleDestSelect = (d) => {
+        setDest(d);
         setStep(2);
     };
 
@@ -105,7 +109,7 @@ export default function TransferFlow() {
             const response = await fetch('/api/transfer/execute', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source, playlistIds }),
+                body: JSON.stringify({ source, dest, playlistIds }),
                 signal: abortControllerRef.current.signal
             });
 
@@ -212,12 +216,37 @@ export default function TransferFlow() {
         );
     }
 
-    // Step 2: Auth
+    // Step 1.5: Destination
+    if (step === 1.5) {
+        return (
+            <div className="w-full max-w-4xl mx-auto p-6">
+                <div className="flex items-center mb-10 relative">
+                    <button onClick={() => setStep(1)} className="absolute left-0 p-2 rounded-full hover:bg-zinc-800 transition text-zinc-400 hover:text-white" title="Back">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                    </button>
+                    <h2 className="text-3xl font-bold text-center w-full bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-600">Select Destination Platform</h2>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <button onClick={() => handleDestSelect('spotify')} className="group p-8 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-green-500 hover:bg-zinc-800 transition-all duration-300">
+                        <span className="text-4xl block mb-4">🟢</span>
+                        <span className="text-2xl font-bold text-white group-hover:text-green-400">Spotify</span>
+                        {source === 'spotify' && <span className="block mt-2 text-xs text-zinc-500 uppercase tracking-widest">(Clone / Backup)</span>}
+                    </button>
+                    <button onClick={() => handleDestSelect('youtube')} className="group p-8 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-red-500 hover:bg-zinc-800 transition-all duration-300">
+                        <span className="text-4xl block mb-4">🔴</span>
+                        <span className="text-2xl font-bold text-white group-hover:text-red-400">YouTube Music</span>
+                        {source === 'youtube' && <span className="block mt-2 text-xs text-zinc-500 uppercase tracking-widest">(Clone / Backup)</span>}
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     if (step === 2) {
         return (
             <div className="w-full max-w-2xl mx-auto p-6">
                 <div className="flex items-center mb-8 relative">
-                    <button onClick={() => setStep(1)} className="absolute left-0 p-2 rounded-full hover:bg-zinc-800 transition text-zinc-400 hover:text-white" title="Back">
+                    <button onClick={() => setStep(1.5)} className="absolute left-0 p-2 rounded-full hover:bg-zinc-800 transition text-zinc-400 hover:text-white" title="Back">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
                     </button>
                     <h2 className="text-3xl font-bold text-center w-full">Connect Accounts</h2>

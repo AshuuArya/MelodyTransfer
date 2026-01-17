@@ -14,8 +14,8 @@ const sendEvent = (controller, event, data) => {
 
 export async function POST(request) {
     const body = await request.json();
-    const { source, playlistIds } = body;
-    const dest = source === 'spotify' ? 'youtube' : 'spotify';
+    const { source, playlistIds, dest } = body;
+    // const dest = source === 'spotify' ? 'youtube' : 'spotify'; // No longer inferred
     const cookieStore = await cookies();
     const sourceToken = cookieStore.get(`${source}_access_token`)?.value;
     const destToken = cookieStore.get(`${dest}_access_token`)?.value;
@@ -76,17 +76,18 @@ export async function POST(request) {
                                 const res = await getPlaylistTracks(sourceToken, pId);
                                 tracksToTransfer = res.items.map(t => ({
                                     name: t.track.name,
-                                    artist: t.track.artists[0].name
+                                    artist: t.track.artists[0].name,
+                                    track: t.track // Keep full obj including URI
                                 }));
                             }
                         } else {
                             // YouTube Source
-                            // We need to fetch playlist title? or client sends it.
                             playlistName = `Transfer ${pId}`;
                             const res = await getPlaylistItems(sourceToken, pId);
                             tracksToTransfer = res.items.map(i => ({
                                 name: i.snippet.title,
-                                artist: "" // YT doesn't have artist field easily separated always
+                                artist: "",
+                                originalItem: i // Keep full obj including resourceId
                             }));
                         }
                     } catch (e) {
@@ -99,22 +100,39 @@ export async function POST(request) {
                     sendEvent(controller, 'progress', { message: `Found ${tracksToTransfer.length} tracks in ${playlistName}. Matching...` });
 
                     // 2. Match
-                    // Process in chunks or all at once? The matching lib does logic.
-                    // We can pass a progress callback to processTransferBatch if we want granular updates
-                    const { matches, failed } = await processTransferBatch(
-                        tracksToTransfer,
-                        source,
-                        destToken,
-                        (curr, total) => {
-                            // Optional: sending too many events might clog client. Throttle if needed.
-                            // sendEvent(controller, 'matching_progress', { current: curr, total });
-                        }
-                    );
+                    let matches = [];
+                    let failed = [];
 
-                    summary.successful += matches.length;
-                    summary.failed += failed.length;
+                    if (source === dest) {
+                        // Same Platform Optimization: SKIP Matching
+                        // Direct clone.
+                        matches = tracksToTransfer.map(t => {
+                            if (source === 'spotify') {
+                                return { match: { uri: t.track.uri } };
+                            } else {
+                                // YouTube: Use preserved original item
+                                return { match: { id: { videoId: t.originalItem.snippet.resourceId.videoId } } };
+                            }
+                        }).filter(Boolean);
 
-                    sendEvent(controller, 'progress', { message: `Matched ${matches.length} songs. Creating playlist...` });
+                        sendEvent(controller, 'log', { message: `Same platform detected. Cloning ${matches.length} tracks directly.`, type: 'info' });
+                    } else {
+                        // Cross Platform: Use Matching Lib
+                        const result = await processTransferBatch(
+                            tracksToTransfer,
+                            source,
+                            destToken,
+                            (curr, total) => { }
+                        );
+                        matches = result.matches;
+                        failed = result.failed;
+                    }
+
+                    if (source !== dest) { // Only log matching for cross-platform
+                        sendEvent(controller, 'progress', { message: `Matched ${matches.length} songs. Creating playlist...` });
+                    } else {
+                        sendEvent(controller, 'progress', { message: `Cloning ${matches.length} songs. Creating duplicate playlist...` });
+                    }
 
                     // 3. Create Dest Playlist
                     let newPlaylistId = null;
