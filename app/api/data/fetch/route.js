@@ -14,7 +14,7 @@ export async function GET(request) {
         return NextResponse.json({ error: 'Source required' }, { status: 400 });
     }
 
-    const token = cookieStore.get(`${source}_access_token`)?.value;
+    const token = cookieStore.get(`${source}_source_access_token`)?.value;
 
     if (!token) {
         return NextResponse.json({ error: `Not authenticated with ${source}` }, { status: 401 });

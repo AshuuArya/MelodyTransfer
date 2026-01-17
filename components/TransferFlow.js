@@ -5,12 +5,16 @@ import { useRouter, useSearchParams } from 'next/navigation';
 export default function TransferFlow() {
     const router = useRouter();
     const searchParams = useSearchParams();
+
+    // Steps: 1: Source, 2: Dest, 3: Auth, 4: Select, 5: Transfer
     const [step, setStep] = useState(1);
-    const [source, setSource] = useState(null);
-    const [dest, setDest] = useState(null);
+
+    const [source, setSource] = useState(null); // 'spotify' | 'youtube'
+    const [dest, setDest] = useState(null);     // 'spotify' | 'youtube'
+
     const [playlists, setPlaylists] = useState([]);
     const [selectedPlaylists, setSelectedPlaylists] = useState([]);
-    const [authStatus, setAuthStatus] = useState({ spotify: false, youtube: false });
+    const [authStatus, setAuthStatus] = useState(null);
     const [loading, setLoading] = useState(false);
 
     // Transfer State
@@ -22,9 +26,8 @@ export default function TransferFlow() {
     // Initial Auth Check with Polling
     useEffect(() => {
         checkAuthStatus();
-        // Poll a few times to catch redirect updates
         const interval = setInterval(checkAuthStatus, 2000);
-        setTimeout(() => clearInterval(interval), 10000); // Stop after 10s
+        setTimeout(() => clearInterval(interval), 15000);
         return () => clearInterval(interval);
     }, [searchParams]);
 
@@ -38,40 +41,35 @@ export default function TransferFlow() {
         }
     };
 
-    const handleSourceSelect = (s) => {
-        setSource(s);
-        setStep(1.5); // Intermediate step for Dest selection
-    };
-
-    const handleDestSelect = (d) => {
-        setDest(d);
-        setStep(2);
-    };
-
-    const handleDisconnect = async (provider) => {
+    const handleDisconnect = async (provider, role) => {
+        // We need a logout API that accepts role
+        // For now, assume logout clears all or we add logic? 
+        // Let's just create a logout endpoint or client-side cookie clear?
+        // Simple hack: Call logout endpoint with role param
         try {
-            const res = await fetch('/api/auth/logout', {
+            // NOTE: You need to implement /api/auth/logout handler to accept role if you haven't!
+            // Assuming we'll fix backend logout next
+            await fetch('/api/auth/logout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ provider })
+                body: JSON.stringify({ provider, role })
             });
-            if (res.ok) {
-                setAuthStatus(prev => ({ ...prev, [provider]: false }));
-            }
+            checkAuthStatus();
         } catch (e) {
             console.error("Disconnect failed", e);
         }
     };
 
-    const login = (provider) => {
-        // Redirect to auth endpoint
-        window.location.href = `/api/auth/${provider}`;
+    const login = (provider, role) => {
+        window.location.href = `/api/auth/${provider}?role=${role}`;
     };
 
     const fetchPlaylists = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/data/fetch?source=${source}`);
+            // Fetch needs to know it's a 'source' fetch
+            const res = await fetch(`/api/data/fetch?source=${source}&role=source`); // Add role param to fetch
+
             if (res.status === 401) {
                 alert("Session expired. Please reconnect.");
                 checkAuthStatus();
@@ -81,7 +79,7 @@ export default function TransferFlow() {
             const data = await res.json();
             if (data.playlists) {
                 setPlaylists(data.playlists);
-                setStep(3);
+                setStep(4);
             } else {
                 alert("Failed to fetch playlists: " + (data.error || "Unknown error"));
             }
@@ -95,27 +93,24 @@ export default function TransferFlow() {
     const abortControllerRef = useRef(null);
 
     const startTransfer = async () => {
-        setStep(4);
+        setStep(5);
         setTransferActive(true);
         setProgressLog([]);
         setTransferStats({ total: 0, successful: 0, failed: 0 });
 
-        // Create new AbortController
         abortControllerRef.current = new AbortController();
-
         const playlistIds = selectedPlaylists.map(p => p.id);
 
         try {
             const response = await fetch('/api/transfer/execute', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source, dest, playlistIds }),
+                body: JSON.stringify({ source, dest, playlistIds }), // Send dest too!
                 signal: abortControllerRef.current.signal
             });
 
             if (!response.ok) throw new Error("Transfer request failed");
 
-            // Consume Streaming Response
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
 
@@ -151,22 +146,14 @@ export default function TransferFlow() {
     };
 
     const handleCancel = () => {
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
+        if (abortControllerRef.current) abortControllerRef.current.abort();
     };
 
     const handleStreamEvent = (type, data) => {
         switch (type) {
-            case 'start':
-                addLog(data.message);
-                break;
-            case 'progress':
-                addLog(data.message, 'info');
-                break;
-            case 'log':
-                addLog(data.message, data.type);
-                break;
+            case 'start': addLog(data.message); break;
+            case 'progress': addLog(data.message, 'info'); break;
+            case 'log': addLog(data.message, data.type); break;
             case 'complete':
                 addLog("Transfer Completed!", 'success');
                 if (data.summary) {
@@ -178,9 +165,7 @@ export default function TransferFlow() {
                 }
                 setTransferActive(false);
                 break;
-            case 'error':
-                addLog(`Error: ${data.message}`, 'error');
-                break;
+            case 'error': addLog(`Error: ${data.message}`, 'error'); break;
         }
     };
 
@@ -188,54 +173,90 @@ export default function TransferFlow() {
         setProgressLog(prev => [...prev, { msg, type, time: new Date().toLocaleTimeString() }]);
     };
 
-    // Auto-scroll log
     useEffect(() => {
-        if (logContainerRef.current) {
-            logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-        }
+        if (logContainerRef.current) logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }, [progressLog]);
 
-    // UI Renders (Simplified from original but keeping style)
+    // --- UI HELPERS ---
+    const getAuthData = (provider, role) => {
+        if (!authStatus) return null;
+        return authStatus[provider]?.[role];
+    };
 
-    // Step 1: Source
+    const renderAuthCard = (role, provider) => {
+        const data = getAuthData(provider, role);
+        const isConnected = data?.connected;
+        const user = data?.user;
+        const color = provider === 'spotify' ? 'green' : 'red';
+        const borderColor = provider === 'spotify' ? 'border-green-500' : 'border-red-500';
+
+        let avatar = 'https://www.gravatar.com/avatar?d=mp';
+        let name = 'Unknown User';
+
+        if (user) {
+            if (provider === 'spotify') {
+                avatar = user.images?.[0]?.url || avatar;
+                name = user.display_name;
+            } else {
+                avatar = user.thumbnails?.default?.url || avatar;
+                name = user.title;
+            }
+        }
+
+        return (
+            <div className={`p-6 rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col md:flex-row justify-between items-center gap-4 group hover:border-zinc-600 transition-all ${role === 'source' ? 'md:mr-auto' : 'md:ml-auto'} w-full`}>
+                <div className="flex items-center gap-4 w-full">
+                    {isConnected ? (
+                        <img
+                            src={avatar}
+                            className={`w-12 h-12 rounded-full border-2 ${borderColor} object-cover`}
+                            onError={(e) => { e.target.onerror = null; e.target.src = 'https://www.gravatar.com/avatar?d=mp'; }}
+                        />
+                    ) : (
+                        <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">
+                            {provider === 'spotify' ? '🟢' : '🔴'}
+                        </div>
+                    )}
+                    <div>
+                        <div className="text-xs uppercase tracking-wider text-zinc-500 font-bold mb-1">{role}</div>
+                        <h3 className="text-xl font-bold capitalize">{provider === 'youtube' ? 'YouTube Music' : provider}</h3>
+                        {isConnected ? (
+                            <p className={`text-sm text-${color}-400 font-medium`}>{name}</p>
+                        ) : (
+                            <p className="text-sm text-zinc-400">Not Connected</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {isConnected ? (
+                        <button onClick={() => handleDisconnect(provider, role)} className="p-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition" title="Disconnect">
+                            ✕
+                        </button>
+                    ) : (
+                        <button onClick={() => login(provider, role)} className="px-6 py-2 rounded-full bg-white text-black font-bold hover:bg-zinc-200 transition whitespace-nowrap">
+                            Connect
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    // --- RENDER ---
+
     if (step === 1) {
         return (
             <div className="w-full max-w-4xl mx-auto p-6">
                 <h2 className="text-3xl font-bold text-center mb-10 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-600">Select Source Platform</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <button onClick={() => handleSourceSelect('spotify')} className="group p-8 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-green-500 hover:bg-zinc-800 transition-all duration-300">
+                    <button onClick={() => { setSource('spotify'); setStep(2); }} className="group p-8 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-green-500 hover:bg-zinc-800 transition-all">
                         <span className="text-4xl block mb-4">🟢</span>
                         <span className="text-2xl font-bold text-white group-hover:text-green-400">Spotify</span>
                     </button>
-                    <button onClick={() => handleSourceSelect('youtube')} className="group p-8 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-red-500 hover:bg-zinc-800 transition-all duration-300">
+                    <button onClick={() => { setSource('youtube'); setStep(2); }} className="group p-8 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-red-500 hover:bg-zinc-800 transition-all">
                         <span className="text-4xl block mb-4">🔴</span>
                         <span className="text-2xl font-bold text-white group-hover:text-red-400">YouTube Music</span>
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    // Step 1.5: Destination
-    if (step === 1.5) {
-        return (
-            <div className="w-full max-w-4xl mx-auto p-6">
-                <div className="flex items-center mb-10 relative">
-                    <button onClick={() => setStep(1)} className="absolute left-0 p-2 rounded-full hover:bg-zinc-800 transition text-zinc-400 hover:text-white" title="Back">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-                    </button>
-                    <h2 className="text-3xl font-bold text-center w-full bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-600">Select Destination Platform</h2>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <button onClick={() => handleDestSelect('spotify')} className="group p-8 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-green-500 hover:bg-zinc-800 transition-all duration-300">
-                        <span className="text-4xl block mb-4">🟢</span>
-                        <span className="text-2xl font-bold text-white group-hover:text-green-400">Spotify</span>
-                        {source === 'spotify' && <span className="block mt-2 text-xs text-zinc-500 uppercase tracking-widest">(Clone / Backup)</span>}
-                    </button>
-                    <button onClick={() => handleDestSelect('youtube')} className="group p-8 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-red-500 hover:bg-zinc-800 transition-all duration-300">
-                        <span className="text-4xl block mb-4">🔴</span>
-                        <span className="text-2xl font-bold text-white group-hover:text-red-400">YouTube Music</span>
-                        {source === 'youtube' && <span className="block mt-2 text-xs text-zinc-500 uppercase tracking-widest">(Clone / Backup)</span>}
                     </button>
                 </div>
             </div>
@@ -244,118 +265,47 @@ export default function TransferFlow() {
 
     if (step === 2) {
         return (
-            <div className="w-full max-w-2xl mx-auto p-6">
-                <div className="flex items-center mb-8 relative">
-                    <button onClick={() => setStep(1.5)} className="absolute left-0 p-2 rounded-full hover:bg-zinc-800 transition text-zinc-400 hover:text-white" title="Back">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+            <div className="w-full max-w-4xl mx-auto p-6">
+                <div className="flex items-center mb-10 relative">
+                    <button onClick={() => setStep(1)} className="absolute left-0 p-2 text-zinc-400 hover:text-white"><span className="text-xl">←</span></button>
+                    <h2 className="text-3xl font-bold text-center w-full bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-600">Select Destination</h2>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <button onClick={() => { setDest('spotify'); setStep(3); }} className="group p-8 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-green-500 hover:bg-zinc-800 transition-all">
+                        <span className="text-4xl block mb-4">🟢</span>
+                        <span className="text-2xl font-bold text-white group-hover:text-green-400">Spotify</span>
                     </button>
+                    <button onClick={() => { setDest('youtube'); setStep(3); }} className="group p-8 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-red-500 hover:bg-zinc-800 transition-all">
+                        <span className="text-4xl block mb-4">🔴</span>
+                        <span className="text-2xl font-bold text-white group-hover:text-red-400">YouTube Music</span>
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    if (step === 3) {
+        const sourceConnected = getAuthData(source, 'source')?.connected;
+        const destConnected = getAuthData(dest, 'dest')?.connected;
+        const canProceed = sourceConnected && destConnected;
+
+        return (
+            <div className="w-full max-w-3xl mx-auto p-6">
+                <div className="flex items-center mb-8 relative">
+                    <button onClick={() => setStep(2)} className="absolute left-0 p-2 text-zinc-400 hover:text-white"><span className="text-xl">←</span></button>
                     <h2 className="text-3xl font-bold text-center w-full">Connect Accounts</h2>
                 </div>
 
                 <div className="space-y-6">
-                    {/* Source Account */}
-                    <div className="p-6 rounded-xl bg-zinc-900 border border-zinc-700 flex justify-between items-center group hover:border-zinc-600 transition-all">
-                        <div className="flex items-center gap-4">
-                            {authStatus[source] && authStatus[`${source}User`] ? (
-                                <img
-                                    src={(source === 'spotify' ? authStatus.spotifyUser.images?.[0]?.url : authStatus.youtubeUser.thumbnails?.default?.url) || 'https://www.gravatar.com/avatar?d=mp'}
-                                    className="w-12 h-12 rounded-full border-2 border-green-500 object-cover"
-                                    alt="Profile"
-                                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://www.gravatar.com/avatar?d=mp'; }}
-                                />
-                            ) : (
-                                <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">
-                                    {source === 'spotify' ? '🟢' : '🔴'}
-                                </div>
-                            )}
-                            <div>
-                                <h3 className="text-xl font-bold">{source === 'spotify' ? 'Spotify' : 'YouTube Music'}</h3>
-                                {authStatus[source] && authStatus[`${source}User`] ? (
-                                    <p className="text-sm text-green-400 font-medium">
-                                        {source === 'spotify' ? authStatus.spotifyUser.display_name : authStatus.youtubeUser.title}
-                                    </p>
-                                ) : (
-                                    <p className="text-sm text-zinc-400">Not Connected</p>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            {authStatus[source] ? (
-                                <>
-                                    <a
-                                        href={source === 'spotify' ? 'https://open.spotify.com' : 'https://music.youtube.com'}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="px-4 py-2 rounded-full bg-zinc-800 text-xs font-bold hover:bg-zinc-700 transition"
-                                    >
-                                        Open App ↗
-                                    </a>
-                                    <button onClick={() => handleDisconnect(source)} className="p-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition" title="Disconnect">
-                                        ✕
-                                    </button>
-                                </>
-                            ) : (
-                                <button onClick={() => login(source)} className="px-6 py-2 rounded-full bg-white text-black font-bold hover:bg-zinc-200 transition">
-                                    Connect
-                                </button>
-                            )}
-                        </div>
+                    {renderAuthCard('source', source)}
+                    <div className="flex justify-center">
+                        <div className="text-2xl animate-pulse text-zinc-600">↓</div>
                     </div>
-
-                    {/* Destination Account */}
-                    <div className="p-6 rounded-xl bg-zinc-900 border border-zinc-700 flex justify-between items-center group hover:border-zinc-600 transition-all">
-                        <div className="flex items-center gap-4">
-                            {authStatus[dest] && authStatus[`${dest}User`] ? (
-                                <img
-                                    src={(dest === 'spotify' ? authStatus.spotifyUser.images?.[0]?.url : authStatus.youtubeUser.thumbnails?.default?.url) || 'https://www.gravatar.com/avatar?d=mp'}
-                                    className="w-12 h-12 rounded-full border-2 border-blue-500 object-cover"
-                                    alt="Profile"
-                                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://www.gravatar.com/avatar?d=mp'; }}
-                                />
-                            ) : (
-                                <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">
-                                    {dest === 'spotify' ? '🟢' : '🔴'}
-                                </div>
-                            )}
-                            <div>
-                                <h3 className="text-xl font-bold">{dest === 'spotify' ? 'Spotify' : 'YouTube Music'}</h3>
-                                {authStatus[dest] && authStatus[`${dest}User`] ? (
-                                    <p className="text-sm text-green-400 font-medium">
-                                        {dest === 'spotify' ? authStatus.spotifyUser.display_name : authStatus.youtubeUser.title}
-                                    </p>
-                                ) : (
-                                    <p className="text-sm text-zinc-400">Not Connected</p>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            {authStatus[dest] ? (
-                                <>
-                                    <a
-                                        href={dest === 'spotify' ? 'https://open.spotify.com' : 'https://music.youtube.com'}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="px-4 py-2 rounded-full bg-zinc-800 text-xs font-bold hover:bg-zinc-700 transition"
-                                    >
-                                        Open App ↗
-                                    </a>
-                                    <button onClick={() => handleDisconnect(dest)} className="p-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition" title="Disconnect">
-                                        ✕
-                                    </button>
-                                </>
-                            ) : (
-                                <button onClick={() => login(dest)} className="px-6 py-2 rounded-full bg-white text-black font-bold hover:bg-zinc-200 transition">
-                                    Connect
-                                </button>
-                            )}
-                        </div>
-                    </div>
+                    {renderAuthCard('dest', dest)}
                 </div>
 
                 <div className="text-center mt-10">
-                    <button onClick={fetchPlaylists} disabled={loading || !authStatus[source] || !authStatus[dest]} className="px-8 py-3 rounded-full bg-blue-600 text-white font-bold disabled:opacity-50 hover:bg-blue-500 transition shadow-lg hover:shadow-blue-500/20">
+                    <button onClick={fetchPlaylists} disabled={loading || !canProceed} className="px-8 py-3 rounded-full bg-blue-600 text-white font-bold disabled:opacity-50 hover:bg-blue-500 transition shadow-lg hover:shadow-blue-500/20">
                         {loading ? 'Loading...' : 'Next: Select Music'}
                     </button>
                 </div>
@@ -363,14 +313,11 @@ export default function TransferFlow() {
         );
     }
 
-    // Step 3: Select
-    if (step === 3) {
+    if (step === 4) { // Select Music
         return (
             <div className="w-full max-w-4xl mx-auto p-6">
                 <div className="flex items-center mb-6 relative">
-                    <button onClick={() => setStep(2)} className="absolute left-0 p-2 rounded-full hover:bg-zinc-800 transition text-zinc-400 hover:text-white" title="Back">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-                    </button>
+                    <button onClick={() => setStep(3)} className="absolute left-0 p-2 text-zinc-400 hover:text-white"><span className="text-xl">←</span></button>
                     <h2 className="text-3xl font-bold w-full text-center">Select Playlists</h2>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-h-[500px] overflow-y-auto">
@@ -394,13 +341,11 @@ export default function TransferFlow() {
         );
     }
 
-    // Step 4: Progress
-    if (step === 4) {
+    if (step === 5) { // Progress
         const percent = transferStats.total > 0 ? Math.round((transferStats.successful + transferStats.failed) / transferStats.total * 100) : 0;
-
         return (
             <div className="w-full max-w-3xl mx-auto p-6">
-                <h2 className="text-3xl font-bold text-center mb-2">{transferActive ? 'Transferring Logic...' : 'Transfer Complete'}</h2>
+                <h2 className="text-3xl font-bold text-center mb-2">{transferActive ? 'Transferring...' : 'Transfer Complete'}</h2>
 
                 {transferActive && (
                     <div className="text-center mb-6">
@@ -410,7 +355,6 @@ export default function TransferFlow() {
                     </div>
                 )}
 
-                {/* Stats Bar */}
                 <div className="grid grid-cols-3 gap-4 mb-6 text-center">
                     <div className="bg-zinc-900 p-4 rounded-xl border border-zinc-800">
                         <p className="text-zinc-400 text-sm">Total Tracks</p>
@@ -426,7 +370,6 @@ export default function TransferFlow() {
                     </div>
                 </div>
 
-                {/* Log Terminal */}
                 <div ref={logContainerRef} className="bg-black/80 p-6 rounded-xl border border-zinc-800 font-mono text-sm h-[400px] overflow-y-auto mb-6 shadow-inner">
                     {progressLog.map((log, i) => (
                         <div key={i} className={`mb-1 ${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400 font-bold' : 'text-zinc-300'}`}>
@@ -435,7 +378,6 @@ export default function TransferFlow() {
                     ))}
                     {!transferActive && <div className="text-blue-400 mt-4">--- End of Transfer ---</div>}
                 </div>
-
                 {!transferActive && (
                     <div className="text-center">
                         <button onClick={() => window.location.reload()} className="px-8 py-3 rounded-full bg-white text-black font-bold hover:bg-gray-200 transition">

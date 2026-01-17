@@ -1,26 +1,17 @@
-
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
 export async function POST(request) {
-    try {
-        const body = await request.json();
-        const { provider } = body;
+    const { provider, role } = await request.json();
+    const cookieStore = await cookies();
 
-        if (!provider || !['spotify', 'youtube'].includes(provider)) {
-            return NextResponse.json({ error: 'Invalid provider' }, { status: 400 });
-        }
-
-        const cookieStore = await cookies();
-
-        // Delete all auth-related cookies for the provider
-        cookieStore.delete(`${provider}_access_token`);
-        cookieStore.delete(`${provider}_refresh_token`);
-        cookieStore.delete(`${provider}_expires_at`);
-
-        return NextResponse.json({ success: true, message: `Disconnected from ${provider}` });
-    } catch (error) {
-        console.error("Logout Error", error);
-        return NextResponse.json({ error: 'Logout failed' }, { status: 500 });
+    if (provider && role) {
+        cookieStore.delete(`${provider}_${role}_access_token`);
+        cookieStore.delete(`${provider}_${role}_refresh_token`);
+        cookieStore.delete(`${provider}_${role}_expires_at`);
+    } else {
+        // Fallback or clear all? For now, do nothing if invalid
     }
+
+    return NextResponse.json({ success: true });
 }

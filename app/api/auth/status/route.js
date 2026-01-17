@@ -6,115 +6,89 @@ import { refreshYouTubeToken } from '@/lib/youtube';
 
 export async function GET() {
     const cookieStore = await cookies();
-    const status = {
-        spotify: false,
-        youtube: false,
-        user: null
+
+    // Helper to check and refresh token for a specific provider and role
+    const checkToken = async (provider, role) => {
+        const accessName = `${provider}_${role}_access_token`;
+        const refreshName = `${provider}_${role}_refresh_token`;
+        const expiresName = `${provider}_${role}_expires_at`;
+
+        let token = cookieStore.get(accessName)?.value;
+        const refreshToken = cookieStore.get(refreshName)?.value;
+        let result = { connected: false, user: null, refreshed: false, newToken: null, expiresIn: 0 };
+
+        if (token) {
+            result.connected = true;
+        } else if (refreshToken) {
+            try {
+                // Refresh Logic
+                let tokens;
+                if (provider === 'spotify') tokens = await refreshSpotifyToken(refreshToken);
+                else if (provider === 'youtube') tokens = await refreshYouTubeToken(refreshToken);
+
+                if (tokens) {
+                    result.connected = true;
+                    result.refreshed = true;
+                    result.newToken = tokens.access_token;
+                    result.expiresIn = tokens.expires_in;
+                    token = tokens.access_token; // Use new token for user fetch
+                }
+            } catch (e) {
+                console.error(`Failed to refresh ${provider} ${role}`, e);
+            }
+        }
+
+        // Fetch User if Connected
+        if (result.connected && token) {
+            try {
+                const lib = provider === 'spotify' ? await import('@/lib/spotify') : await import('@/lib/youtube');
+                result.user = await lib.getCurrentUser(token);
+            } catch (e) {
+                console.error(`Failed to fetch user for ${provider} ${role}`, e);
+            }
+        }
+
+        return result;
     };
 
-    // Check Spotify
-    let spToken = cookieStore.get('spotify_access_token')?.value;
-    const spRefresh = cookieStore.get('spotify_refresh_token')?.value;
-    const spExpiresAt = parseInt(cookieStore.get('spotify_expires_at')?.value || '0');
+    // Parallel checks
+    const [spSource, spDest, ytSource, ytDest] = await Promise.all([
+        checkToken('spotify', 'source'),
+        checkToken('spotify', 'dest'),
+        checkToken('youtube', 'source'),
+        checkToken('youtube', 'dest')
+    ]);
 
-    if (spToken) {
-        status.spotify = true;
-    } else if (spRefresh) {
-        // Try refresh
-        try {
-            const tokens = await refreshSpotifyToken(spRefresh);
-            // We can't set cookies in GET handler response easily if we are just returning JSON?
-            // Actually Next.js API Routes allow setting cookies on the response object.
-            // But here we are returning JSON. We need to construct response.
-            status.spotify = true;
-            status.spotifyRefreshed = true;
-            status.newSpotifyToken = tokens.access_token; // Client can't set httpOnly, so we should set it in header
-            status.expiresIn = tokens.expires_in;
-        } catch (e) {
-            console.error("Failed to auto-refresh Spotify", e);
-        }
-    }
+    const status = {
+        spotify: { source: spSource, dest: spDest },
+        youtube: { source: ytSource, dest: ytDest }
+    };
 
-    // Check YouTube
-    let ytToken = cookieStore.get('youtube_access_token')?.value;
-    const ytRefresh = cookieStore.get('youtube_refresh_token')?.value;
-
-    if (ytToken) {
-        status.youtube = true;
-    } else if (ytRefresh) {
-        // Try refresh logic similar to above
-        try {
-            const tokens = await refreshYouTubeToken(ytRefresh);
-            status.youtube = true;
-            status.youtubeRefreshed = true;
-            status.newYoutubeToken = tokens.access_token;
-            status.ytExpiresIn = tokens.expires_in;
-        } catch (e) {
-            console.error("Failed to auto-refresh YouTube", e);
-        }
-    }
-
-    // Construct response to set cookies if refreshed
     const response = NextResponse.json(status);
 
-    // Fetch User Profiles if connected
-    try {
-        if (status.spotify) {
-            let token = spToken;
-            if (status.spotifyRefreshed) token = status.newSpotifyToken;
-
-            // We need to import getCurrentUser from lib/spotify
-            const spUser = await import('@/lib/spotify').then(m => m.getCurrentUser(token));
-            status.spotifyUser = spUser;
+    // Helper to set cookie on response
+    const setRefreshedCookie = (provider, role, data) => {
+        if (data.refreshed) {
+            response.cookies.set(`${provider}_${role}_access_token`, data.newToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                path: '/',
+                maxAge: data.expiresIn,
+                sameSite: 'lax'
+            });
+            response.cookies.set(`${provider}_${role}_expires_at`, (Date.now() + data.expiresIn * 1000).toString(), {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                path: '/',
+                sameSite: 'lax'
+            });
         }
-    } catch (e) {
-        console.error("Failed to fetch Spotify user", e);
-    }
+    };
 
-    try {
-        if (status.youtube) {
-            let token = ytToken;
-            if (status.youtubeRefreshed) token = status.newYoutubeToken;
+    setRefreshedCookie('spotify', 'source', spSource);
+    setRefreshedCookie('spotify', 'dest', spDest);
+    setRefreshedCookie('youtube', 'source', ytSource);
+    setRefreshedCookie('youtube', 'dest', ytDest);
 
-            // We need to import getCurrentUser from lib/youtube
-            const ytUser = await import('@/lib/youtube').then(m => m.getCurrentUser(token));
-            status.youtubeUser = ytUser;
-        }
-    } catch (e) {
-        console.error("Failed to fetch YouTube user", e);
-    }
-
-    // Re-create JSON response with user data included
-    // Note: NextResponse.json() creates a new response, so we need to copy over cookies if we create a new one,
-    // or just return the data object if we assume the previous `response` object is mutable/extendable? 
-    // NextResponse.json returns a Response object. We can't modify the body easily.
-    // It's cleaner to create the response at the very end.
-
-    const finalResponse = NextResponse.json(status);
-
-    if (status.spotifyRefreshed) {
-        finalResponse.cookies.set('spotify_access_token', status.newSpotifyToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            path: '/',
-            maxAge: status.expiresIn
-        });
-        // Update expires_at
-        finalResponse.cookies.set('spotify_expires_at', (Date.now() + status.expiresIn * 1000).toString(), {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            path: '/'
-        });
-    }
-
-    if (status.youtubeRefreshed) {
-        finalResponse.cookies.set('youtube_access_token', status.newYoutubeToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            path: '/',
-            maxAge: status.ytExpiresIn
-        });
-    }
-
-    return finalResponse;
+    return response;
 }

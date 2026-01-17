@@ -19,7 +19,8 @@ export async function GET(request, props) {
 
     const url = new URL(request.url);
     const code = url.searchParams.get('code');
-    const redirect_uri = `${baseUrl}/api/auth/${provider}`; // Callback points back to here
+    const role = url.searchParams.get('role') || 'source'; // Default to source
+    const redirect_uri = `${baseUrl}/api/auth/${provider}?role=${role}`; // Persist role in callback URL
 
     // 1. Redirect to Auth Provider
     if (!code) {
@@ -55,17 +56,17 @@ export async function GET(request, props) {
             // Calculate expiration for access token
             const expiresIn = tokens.expires_in || 3600; // Default to 1 hour if not provided
 
-            cookieStore.set(`${provider}_access_token`, tokens.access_token, {
+            cookieStore.set(`${provider}_${role}_access_token`, tokens.access_token, {
                 httpOnly: true,
                 secure: isProd,
                 path: '/',
                 sameSite: 'lax',
-                maxAge: expiresIn // Set maxAge for access token
+                maxAge: expiresIn
             });
 
-            // Store expires_at for client-side checks if needed
+            // Store expires_at
             const expiresAt = Date.now() + (expiresIn * 1000);
-            cookieStore.set(`${provider}_expires_at`, expiresAt.toString(), {
+            cookieStore.set(`${provider}_${role}_expires_at`, expiresAt.toString(), {
                 httpOnly: true,
                 secure: isProd,
                 path: '/',
@@ -74,13 +75,12 @@ export async function GET(request, props) {
 
 
             if (tokens.refresh_token) {
-                // Refresh tokens are long-lived
-                cookieStore.set(`${provider}_refresh_token`, tokens.refresh_token, {
+                cookieStore.set(`${provider}_${role}_refresh_token`, tokens.refresh_token, {
                     httpOnly: true,
                     secure: isProd,
                     path: '/',
                     sameSite: 'lax',
-                    maxAge: 30 * 24 * 60 * 60 // 30 days
+                    maxAge: 30 * 24 * 60 * 60
                 });
             }
 
